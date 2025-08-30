@@ -1,12 +1,23 @@
-FROM oven/bun:latest as build-stage
+FROM oven/bun:alpine AS base
+
+FROM base AS deps
 WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN bun install
 RUN bun run build
 
-FROM nginx:alpine as runtime-stage
-COPY --from=build-stage /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=80
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["bun", "run", "server.js"]
